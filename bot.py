@@ -130,9 +130,12 @@ async def status_view(interaction: discord.Interaction):
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
     
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
+    
     status_data, error = get_status_from_db()
     if error:
-        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+        await interaction.followup.send(f"Error: {error}", ephemeral=True)
         return
     
     status_type, status_message = status_data
@@ -141,7 +144,7 @@ async def status_view(interaction: discord.Interaction):
         description=f"**Type:** {status_type}\n**Message:** {status_message}",
         color=discord.Color.blue()
     )
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 @status_group.command(name="set", description="Set your status")
 @app_commands.choices(status_type=status_choices)
@@ -150,6 +153,9 @@ async def status_set(interaction: discord.Interaction, status_type: app_commands
     if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
     
     status_type_value = status_type.value
     status_message = message.strip()
@@ -162,9 +168,9 @@ async def status_set(interaction: discord.Interaction, status_type: app_commands
             description=f"Your status has been updated to:\n**Type:** {status_type_value}\n**Message:** {status_message}",
             color=discord.Color.green()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     else:
-        await interaction.response.send_message(f"Error: {db_message}", ephemeral=True)
+        await interaction.followup.send(f"Error: {db_message}", ephemeral=True)
 
 @status_group.command(name="offline", description="Set status to offline with a message")
 async def status_offline(interaction: discord.Interaction, message: str):
@@ -172,6 +178,9 @@ async def status_offline(interaction: discord.Interaction, message: str):
     if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
     
     # Update status in database
     success, db_message = update_status_in_db("offline", message)
@@ -181,9 +190,9 @@ async def status_offline(interaction: discord.Interaction, message: str):
             description=f"Your status has been updated to:\n**Type:** offline\n**Message:** {message}",
             color=discord.Color.green()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     else:
-        await interaction.response.send_message(f"Error: {db_message}", ephemeral=True)
+        await interaction.followup.send(f"Error: {db_message}", ephemeral=True)
 
 @status_group.command(name="online", description="Set status to online with a message")
 async def status_online(interaction: discord.Interaction, message: str):
@@ -191,6 +200,9 @@ async def status_online(interaction: discord.Interaction, message: str):
     if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
     
     # Update status in database
     success, db_message = update_status_in_db("online", message)
@@ -200,9 +212,9 @@ async def status_online(interaction: discord.Interaction, message: str):
             description=f"Your status has been updated to:\n**Type:** online\n**Message:** {message}",
             color=discord.Color.green()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     else:
-        await interaction.response.send_message(f"Error: {db_message}", ephemeral=True)
+        await interaction.followup.send(f"Error: {db_message}", ephemeral=True)
 
 @status_group.command(name="busy", description="Set status to busy with a message")
 async def status_busy(interaction: discord.Interaction, message: str):
@@ -210,6 +222,9 @@ async def status_busy(interaction: discord.Interaction, message: str):
     if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
     
     # Update status in database
     success, db_message = update_status_in_db("busy", message)
@@ -219,12 +234,154 @@ async def status_busy(interaction: discord.Interaction, message: str):
             description=f"Your status has been updated to:\n**Type:** busy\n**Message:** {message}",
             color=discord.Color.green()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     else:
-        await interaction.response.send_message(f"Error: {db_message}", ephemeral=True)
+        await interaction.followup.send(f"Error: {db_message}", ephemeral=True)
 
-# Add the status group to the bot
+# Database tables are already set up
+
+# Function to add a timeline entry to the database
+def add_timeline_entry(date, title, description):
+    conn = get_db_connection()
+    if not conn:
+        return False, "Failed to connect to database"
+    
+    try:
+        # Insert new timeline entry
+        conn.run(
+            "INSERT INTO \"timeline\" (date, title, description) VALUES (:date, :title, :description)",
+            date=date, title=title, description=description
+        )
+        
+        conn.commit()
+        return True, "Timeline entry added successfully"
+    except Exception as e:
+        return False, f"Error adding timeline entry: {e}"
+    finally:
+        conn.close()
+
+# Function to get timeline entries from database
+def get_timeline_entries(limit=10):
+    conn = get_db_connection()
+    if not conn:
+        return None, "Failed to connect to database"
+    
+    try:
+        # Get timeline entries ordered by id (most recent first)
+        result = conn.run(f"SELECT id, date, title, description FROM \"timeline\" ORDER BY id DESC LIMIT {limit}")
+        return result, None
+    except Exception as e:
+        return None, f"Error getting timeline entries: {e}"
+    finally:
+        conn.close()
+
+# Function to edit a timeline entry
+def edit_timeline_entry(entry_id, date, title, description):
+    conn = get_db_connection()
+    if not conn:
+        return False, "Failed to connect to database"
+    
+    try:
+        # Check if entry exists
+        entry = conn.run("SELECT id FROM \"timeline\" WHERE id = :id", id=entry_id)
+        if not entry:
+            return False, f"Timeline entry with ID {entry_id} not found"
+        
+        # Update the entry
+        conn.run(
+            "UPDATE \"timeline\" SET date = :date, title = :title, description = :description WHERE id = :id",
+            id=entry_id, date=date, title=title, description=description
+        )
+        
+        conn.commit()
+        return True, "Timeline entry updated successfully"
+    except Exception as e:
+        return False, f"Error updating timeline entry: {e}"
+    finally:
+        conn.close()
+
+# Timeline commands group
+timeline_group = app_commands.Group(name="timeline", description="Timeline commands")
+
+@timeline_group.command(name="add", description="Add a new timeline entry")
+async def timeline_add(interaction: discord.Interaction, date: str, title: str, description: str):
+    # Check if user is allowed to use the command
+    if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
+    
+    # Add timeline entry to database
+    success, message = add_timeline_entry(date, title, description)
+    if success:
+        embed = discord.Embed(
+            title="Timeline Entry Added",
+            description=f"**Date:** {date}\n**Title:** {title}\n**Description:** {description}",
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=embed)
+    else:
+        await interaction.followup.send(f"Error: {message}", ephemeral=True)
+
+@timeline_group.command(name="view", description="View recent timeline entries")
+async def timeline_view(interaction: discord.Interaction, limit: int = 5):
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
+    
+    # Get timeline entries from database
+    entries, error = get_timeline_entries(limit)
+    if error and not entries:
+        await interaction.followup.send(f"Error: {error}", ephemeral=True)
+        return
+    
+    if not entries:
+        await interaction.followup.send("No timeline entries found.")
+        return
+    
+    # Create embed with timeline entries
+    embed = discord.Embed(
+        title="Timeline Entries",
+        description=f"Showing the {len(entries)} most recent timeline entries",
+        color=discord.Color.blue()
+    )
+    
+    for entry in entries:
+        entry_id, date, title, description = entry
+        embed.add_field(
+            name=f"ID: {entry_id} | {date} - {title}",
+            value=description,
+            inline=False
+        )
+    
+    await interaction.followup.send(embed=embed)
+
+@timeline_group.command(name="edit", description="Edit an existing timeline entry")
+async def timeline_edit(interaction: discord.Interaction, entry_id: int, date: str, title: str, description: str):
+    # Check if user is allowed to use the command
+    if ALLOWED_USER_IDS and interaction.user.id not in ALLOWED_USER_IDS:
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+    
+    # Defer the response to prevent timeout
+    await interaction.response.defer(ephemeral=False)
+    
+    # Edit timeline entry in database
+    success, message = edit_timeline_entry(entry_id, date, title, description)
+    if success:
+        embed = discord.Embed(
+            title="Timeline Entry Updated",
+            description=f"**ID:** {entry_id}\n**Date:** {date}\n**Title:** {title}\n**Description:** {description}",
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=embed)
+    else:
+        await interaction.followup.send(f"Error: {message}", ephemeral=True)
+
+# Add the command groups to the bot
 bot.tree.add_command(status_group)
+bot.tree.add_command(timeline_group)
 
 # Run the bot
 if __name__ == "__main__":
